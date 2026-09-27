@@ -1,0 +1,95 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { io } from 'socket.io-client';
+import { ArrowLeft, ArrowRight, Check, ChevronRight, Clock3, Copy, Crown, Flame, Layers3, Link2, LoaderCircle, LockKeyhole, RotateCcw, Skull, Users, Vote } from 'lucide-react';
+import './style.css';
+
+const socket=io(import.meta.env.VITE_SERVER_URL || undefined,{autoConnect:false,reconnection:true});
+const baseUrl=import.meta.env.BASE_URL;
+const storageKey='bizarro-session-v1';
+const getSession=()=>{try{return JSON.parse(localStorage.getItem(storageKey)||'null')}catch{return null}};
+const saveSession=(v)=>localStorage.setItem(storageKey,JSON.stringify(v));
+const makeUrl=(code)=>`${location.origin}${baseUrl}?sala=${code}`;
+function App(){
+  const [state,setState]=useState(null);
+  const [connected,setConnected]=useState(false);
+  const [name,setName]=useState('');
+  const [code,setCode]=useState(new URLSearchParams(location.search).get('sala')?.toUpperCase()||'');
+  const [view,setView]=useState(code?'join':'home');
+  const [rounds,setRounds]=useState(8);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [toast,setToast]=useState('');
+  const [seconds,setSeconds]=useState(30);
+  const [showRules,setShowRules]=useState(false);
+  const [pendingCard,setPendingCard]=useState(null);
+  const [pendingPick,setPendingPick]=useState(null);
+  const [pendingVote,setPendingVote]=useState(null);
+  useEffect(()=>{
+    const onConnect=()=>{
+      setConnected(true);
+      const s=getSession();
+      if(s) socket.emit('join',s,(res)=>{if(!res?.ok){localStorage.removeItem(storageKey);setState(null);setView('home');setError('No pudimos recuperar la partida.');}else setError('');});
+    };
+    const onDisconnect=()=>setConnected(false);
+    const onState=s=>{setState(s);setPendingCard(null);setPendingPick(null);setPendingVote(null);history.replaceState({},'',`${baseUrl}?sala=${s.code}`)};
+    socket.on('connect',onConnect);socket.on('disconnect',onDisconnect);socket.on('state',onState);socket.connect();
+    return()=>{socket.off('connect',onConnect);socket.off('disconnect',onDisconnect);socket.off('state',onState);socket.disconnect()};
+  },[]);
+  useEffect(()=>{
+    if(!state?.endsAt)return;
+    const update=()=>setSeconds(Math.max(0,Math.ceil((state.endsAt-Date.now())/1000)));
+    update();const timer=setInterval(update,250);return()=>clearInterval(timer);
+  },[state?.endsAt]);
+  useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),2600);return()=>clearTimeout(timer)},[toast]);
+  const me=state?.players.find(p=>p.id===state.playerId);
+  const judge=state?.players.find(p=>p.id===state.judgeId);
+  const isJudge=state?.judgeId===state?.playerId;
+  const isHost=state?.hostId===state?.playerId;
+  const winner=state?.players.find(p=>p.id===state.winnerId);
+  const roundWinners=state?.winnerIds?.map(id=>state.players.find(p=>p.id===id)).filter(Boolean) || [];
+  const voteResults=state?.voteResults?.map(result=>({...result,player:state.players.find(p=>p.id===result.playerId)})).filter(result=>result.player) || [];
+  const selected=state?.players.find(p=>p.id===state.playerId)?.submitted;
+  useEffect(()=>{if(state?.phase==='lobby' && state.mode==='cards' && state.players.length>rounds) setRounds(12)},[state?.phase,state?.mode,state?.players.length,rounds]);
+  const rankings=useMemo(()=>state?[...state.players].sort((a,b)=>b.score-a.score):[],[state]);
+  const request=(event,payload,success)=>{
+    if(busy||!connected)return;
+    setBusy(true);setError('');
+    socket.timeout(5500).emit(event,payload,(err,res)=>{
+      setBusy(false);
+      if(err||!res?.ok){setError(res?.error||'Se perdió la conexión. Probá de nuevo.');return}
+      success?.(res);
+    });
+  };
+  const enter=(kind)=>{
+    if(!name.trim()){setError('Escribí tu nombre para jugar.');return}
+    const payload={name:name.trim(),...(kind==='join'?{code:code.trim().toUpperCase()}: {})};
+    request(kind,payload,res=>{saveSession({code:res.code,token:res.token,name:name.trim()});setView('game')});
+  };
+  const leave=()=>{
+    socket.emit('leave',{},()=>{});localStorage.removeItem(storageKey);
+    setState(null);setView('home');setError('');history.replaceState({},'',baseUrl);
+    socket.disconnect();socket.connect();
+  };
+  const copy=async()=>{try{await navigator.clipboard.writeText(makeUrl(state.code));setToast('Enlace copiado')}catch{setToast(`Código: ${state.code}`)}};
+  const submitCard=(card)=>{setPendingCard(card.id);request('play',{cardId:card.id},()=>setToast('Carta enviada'))};
+  const submitPick=(card)=>{setPendingPick(card.key);request('pick',{key:card.key},()=>setToast('Respuesta elegida'))};
+  const submitVote=(player)=>{setPendingVote(player.id);request('vote',{playerId:player.id},()=>setToast(`Votaste a ${player.name}`))};
+  return <div className="app"><div className="ambient ambient-one"/><div className="ambient ambient-two"/>
+    <header className="topbar"><div className="brand" onClick={()=>{if(!state)setView('home')}}><span className="brand-mark">✳</span><span>EL MÁS <b>BIZARRO</b></span></div>{state?<div className="top-pill"><span className="live-dot"/>{state.code}</div>:<div className="top-pill small">+18</div>}</header>
+    <main className="main">
+    {!state && view==='home' && <div className="home enter"><div className="eyebrow"><span className="eyebrow-line"/> EL JUEGO QUE DESATA TODO</div><div className="hero-emblem"><Skull size={68} strokeWidth={1.35}/><span className="hero-spark">✳</span></div><h1>¿QUIÉN ES<br/>EL MÁS <em>BIZARRO?</em></h1><p className="hero-copy">Dos modalidades. Respuestas cuestionables. Amigos todavía peores.</p><div className="home-actions"><button className="btn btn-primary" onClick={()=>{setError('');setView('create')}}>Crear partida <ArrowRight size={20}/></button><button className="btn btn-outline" onClick={()=>{setError('');setView('join')}}>Unirme con código <ChevronRight size={19}/></button></div><button className="text-button" onClick={()=>setShowRules(true)}>¿Cómo se juega? <span>↗</span></button><div className="hero-footer"><span><Users size={15}/> 3–10 jugadores</span><span><Clock3 size={15}/> 30 seg. por ronda</span></div></div>}
+    {!state && (view==='join'||view==='create') && <div className="form-page enter"><button className="back" onClick={()=>{setError('');setView('home')}}><ArrowLeft size={18}/> Volver</button><div className="form-icon">{view==='create'?<Flame size={30}/>:<Link2 size={30}/>}</div><div className="eyebrow">{view==='create'?'VOS PONÉS LAS REGLAS':'YA TE ESTÁN ESPERANDO'}</div><h2>{view==='create'?'Armá el caos.':'Entrá al caos.'}</h2><p className="subtle">{view==='create'?'Creá una sala privada e invitá a tus amigos.':'Ingresá el código de la sala para sumarte.'}</p><label className="field-label" htmlFor="name">TU NOMBRE EN EL JUEGO</label><input id="name" maxLength={20} autoComplete="nickname" placeholder="¿Cómo te llamamos?" value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')enter(view)}}/>{view==='join'&&<><label className="field-label" htmlFor="code">CÓDIGO DE SALA</label><input id="code" maxLength={5} autoCapitalize="characters" placeholder="EJ: X7K4P" value={code} onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g,''))} onKeyDown={e=>{if(e.key==='Enter')enter(view)}}/></>}{error&&<p className="error">{error}</p>}<button className="btn btn-primary form-submit" disabled={busy||!connected} onClick={()=>enter(view)}>{busy?'Un momento...':view==='create'?'Crear sala':'Entrar a la sala'}<ArrowRight size={19}/></button><p className="hint"><LockKeyhole size={14}/> Sala privada · Sin cuentas ni descargas</p></div>}
+    {state?.phase==='lobby'&&<div className="lobby enter"><div className="eyebrow"><span className="live-dot"/> SALA DE ESPERA</div><h2>Falta poco para<br/><em>el desastre.</em></h2><p className="subtle">Compartí el código con quienes van a jugar.</p><div className="room-code"><span>CÓDIGO DE SALA</span><strong>{state.code}</strong><button onClick={copy} aria-label="Copiar invitación"><Copy size={19}/></button></div><button className="share-link" onClick={copy}><Link2 size={17}/> Copiar enlace de invitación</button><div className="section-heading"><span>JUGADORES</span><span>{state.players.length}/10</span></div><div className="player-list">{state.players.map((p,i)=><div className="player-row" key={p.id}><span className={`avatar avatar-${i%5}`}>{p.name[0].toUpperCase()}</span><span className="player-name">{p.name}{p.id===state.playerId&&<small> (vos)</small>}</span>{p.id===state.hostId&&<span className="host-label"><Crown size={14}/> ANFITRIÓN</span>}</div>)}</div><div className="section-heading mode-heading"><span>MODALIDAD</span>{!isHost&&<span>ELIGE EL ANFITRIÓN</span>}</div><div className="mode-options"><button className={state.mode==='cards'?'active':''} disabled={!isHost||busy} onClick={()=>request('mode',{mode:'cards'})}><Layers3 size={22}/><span>Cartas<small>Respondé y dejá que el juez decida.</small></span></button><button className={state.mode==='mostLikely'?'active':''} disabled={!isHost||busy} onClick={()=>request('mode',{mode:'mostLikely'})}><Vote size={22}/><span>¿Quién es más Mala Junta?<small>Todos votan por alguien del grupo.</small></span></button></div>{isHost?<><div className="section-heading round-heading"><span>CANTIDAD DE RONDAS</span></div><div className="round-options">{[8,12,16].map(x=><button className={rounds===x?'active':''} key={x} disabled={state.mode==='cards'&&x<state.players.length} onClick={()=>setRounds(x)}>{x}</button>)}</div><button className="btn btn-primary" disabled={busy||state.players.filter(p=>p.connected).length<3} onClick={()=>request('start',{rounds})}>Empezar partida <ArrowRight size={20}/></button>{state.players.filter(p=>p.connected).length<3&&<p className="hint">Necesitás al menos 3 jugadores conectados.</p>}</>:<div className="waiting"><LoaderCircle size={19} className="spin"/> Esperando a que el anfitrión inicie...</div>}{error&&<p className="error">{error}</p>}<button className="leave" onClick={leave}>Salir de la sala</button></div>}
+    {state?.phase==='voting'&&<div className="game enter"><div className="game-meta"><span>RONDA {state.round} <i>/ {state.totalRounds}</i></span><span className={`timer ${seconds<=10?'urgent':''}`}><Clock3 size={18}/>{seconds}s</span></div><div className="eyebrow"><Vote size={14}/> ¿QUIÉN ES MÁS MALA JUNTA?</div><div className="prompt-card vote-prompt"><span className="card-overline">VOTEN SIN PIEDAD...</span><h2>{state.prompt}</h2><span className="prompt-star">✳</span></div><div className="section-heading"><span>{selected?'VOTO REGISTRADO':'ELEGÍ A ALGUIEN'}</span><span>{state.players.filter(p=>p.submitted).length}/{state.players.filter(p=>p.connected).length} VOTOS</span></div><div className="vote-grid">{state.players.filter(p=>p.connected&&p.id!==state.playerId).map((p,i)=><button key={p.id} className={`vote-player ${selected?'disabled':''} ${pendingVote===p.id?'picked':''}`} disabled={!!selected||busy} onClick={()=>submitVote(p)}><span className={`avatar avatar-${i%5}`}>{p.name[0].toUpperCase()}</span><strong>{p.name}</strong>{pendingVote===p.id?<Check size={19}/>:<Vote size={18}/>}</button>)}</div><p className="hint card-hint">{selected?'Esperando el voto de los demás.':'No podés votarte a vos mismo. Si se acaba el tiempo, tu voto será aleatorio.'}</p></div>}
+    {state?.phase==='answering'&&<div className="game enter"><div className="game-meta"><span>RONDA {state.round} <i>/ {state.totalRounds}</i></span><span className={`timer ${seconds<=10?'urgent':''}`}><Clock3 size={18}/>{seconds}s</span></div><div className="judge-strip"><span className="judge-avatar"><Crown size={17}/></span><div><small>JUEZ DE ESTA RONDA</small><strong>{judge?.name}{isJudge?' (vos)':''}</strong></div></div><div className="prompt-card"><span className="card-overline">LA CONSIGNA ES...</span><h2>{state.prompt}</h2><span className="prompt-star">✳</span></div>{isJudge?<div className="judge-wait"><div className="judge-wait-icon"><Crown size={28}/></div><h3>Hoy tenés el poder.</h3><p>Esperá las respuestas. Vas a elegir la más bizarra.</p><span>{state.players.filter(p=>p.submitted).length} / {state.players.filter(p=>p.connected).length-1} cartas recibidas</span></div>:<><div className="section-heading"><span>{selected?'TU CARTA YA ESTÁ JUGADA':'ELEGÍ TU PEOR RESPUESTA'}</span><span>{state.hand.length} CARTAS</span></div><div className="hand">{state.hand.map((c,i)=><button key={c.id} className={`answer-card ${selected?'disabled':''} ${pendingCard===c.id?'picked':''}`} disabled={!!selected||busy} onClick={()=>submitCard(c)}><span className="answer-index">0{i+1}</span><span className="answer-text">{c.text}</span><span className="answer-arrow">{pendingCard===c.id?<Check size={19}/>:<ArrowRight size={18}/>}</span></button>)}</div><p className="hint card-hint">{selected?'Esperando a los demás jugadores.':'Si se acaba el tiempo, se juega una carta al azar.'}</p></>}</div>}
+    {state?.phase==='judging'&&<div className="game enter"><div className="game-meta"><span>RONDA {state.round} <i>/ {state.totalRounds}</i></span><span className={`timer ${seconds<=10?'urgent':''}`}><Clock3 size={18}/>{seconds}s</span></div><div className="eyebrow">EL VEREDICTO</div><h2 className="game-title">{isJudge?'Elegí la más bizarra.':'El juez está decidiendo...'}</h2><div className="mini-prompt">“{state.prompt}”</div><div className="section-heading"><span>RESPUESTAS ANÓNIMAS</span><span>{state.cards.length}</span></div><div className="hand">{state.cards.map((c,i)=><button key={c.key} className={`answer-card ${isJudge?'judge-choice':'disabled'} ${pendingPick===c.key?'picked':''}`} disabled={!isJudge||busy} onClick={()=>submitPick(c)}><span className="answer-index">0{i+1}</span><span className="answer-text">{c.text}</span>{isJudge&&<span className="answer-arrow"><ArrowRight size={18}/></span>}</button>)}</div><p className="hint card-hint">{isJudge?'Tocá una carta para elegir la ganadora.':'Las cartas se revelan cuando el juez elija.'}</p></div>}
+    {state?.phase==='result'&&state.mode==='cards'&&<div className="game result enter"><div className="game-meta"><span>RONDA {state.round} <i>/ {state.totalRounds}</i></span><span className="timer"><Clock3 size={18}/>{seconds}s</span></div><div className="result-icon"><Crown size={39}/></div><div className="eyebrow">EL JUEZ DECIDIÓ</div><h2 className="game-title">Ganó <em>{winner?.name}</em></h2><div className="winner-card"><span>LA RESPUESTA ELEGIDA</span><p>“{state.winningCard}”</p><b>+2 PUNTOS</b></div><div className="section-heading"><span>TABLA DE POSICIONES</span></div><div className="scores">{rankings.map((p,i)=><div className="score-row" key={p.id}><span className="rank">{String(i+1).padStart(2,'0')}</span><span>{p.name}{p.id===state.playerId&&<small> (vos)</small>}</span><strong>{p.score} pts</strong></div>)}</div>{isHost&&<button className="btn btn-outline next-btn" onClick={()=>request('next',{})}>Siguiente ronda <ArrowRight size={18}/></button>}<p className="hint">La siguiente ronda empieza automáticamente.</p></div>}
+    {state?.phase==='result'&&state.mode==='mostLikely'&&<div className="game result enter"><div className="game-meta"><span>RONDA {state.round} <i>/ {state.totalRounds}</i></span><span className="timer"><Clock3 size={18}/>{seconds}s</span></div><div className="result-icon vote-result-icon"><Vote size={39}/></div><div className="eyebrow">EL GRUPO HABLÓ</div><h2 className="game-title">{roundWinners.length>1?'Empate entre ':''}<em>{roundWinners.map(p=>p.name).join(' + ')}</em></h2><div className="mini-prompt result-prompt">“{state.prompt}”</div><div className="section-heading"><span>VOTOS DE LA RONDA</span><span>{state.players.filter(p=>p.connected).length} EN TOTAL</span></div><div className="scores vote-results">{voteResults.map((result,i)=><div className={`score-row ${state.winnerIds.includes(result.playerId)?'round-winner':''}`} key={result.playerId}><span className="rank">{String(i+1).padStart(2,'0')}</span><span>{result.player.name}{result.player.id===state.playerId&&<small> (vos)</small>}</span><strong>{result.votes} {result.votes===1?'voto':'votos'}</strong></div>)}</div><div className="section-heading"><span>ACUMULADO</span></div><div className="scores">{rankings.map((p,i)=><div className="score-row" key={p.id}><span className="rank">{String(i+1).padStart(2,'0')}</span><span>{p.name}{p.id===state.playerId&&<small> (vos)</small>}</span><strong>{p.score} pts</strong></div>)}</div>{isHost&&<button className="btn btn-outline next-btn" onClick={()=>request('next',{})}>Siguiente ronda <ArrowRight size={18}/></button>}<p className="hint">Cada voto recibido suma un punto.</p></div>}
+    {state?.phase==='ended'&&<div className="game end enter"><div className="end-symbol">✳</div><div className="eyebrow">LA NOCHE TIENE UN GANADOR</div><h1>EL MÁS<br/><em>{state.mode==='mostLikely'?'MALA JUNTA.':'BIZARRO.'}</em></h1><div className="champion"><Crown size={23}/><strong>{rankings.filter(p=>p.score===rankings[0]?.score).map(p=>p.name).join(' + ')}</strong><span>{rankings[0]?.score} PUNTOS</span></div><div className="section-heading"><span>RESULTADOS FINALES</span></div><div className="scores">{rankings.map((p,i)=><div className="score-row" key={p.id}><span className="rank">{String(i+1).padStart(2,'0')}</span><span>{p.name}{p.id===state.playerId&&<small> (vos)</small>}</span><strong>{p.score} pts</strong></div>)}</div><button className="btn btn-primary" onClick={leave}>Nueva partida <RotateCcw size={19}/></button><p className="hint">¿Quién va a superar esto?</p></div>}
+    </main>{toast&&<div className="toast"><Check size={16}/>{toast}</div>}{!connected&&<div className="offline"><LoaderCircle size={16} className="spin"/> Reconectando...</div>}
+    {showRules&&<div className="modal-backdrop" onClick={()=>setShowRules(false)}><div className="modal" onClick={e=>e.stopPropagation()}><button className="modal-close" onClick={()=>setShowRules(false)}>✕</button><div className="eyebrow">LAS REGLAS DEL CAOS</div><h2>Dos formas de<br/><em>perder amistades.</em></h2><h3 className="rules-mode"><Layers3 size={17}/> Modo Cartas</h3><div className="rule"><b>01</b><p>Cada persona recibe 5 respuestas y tiene 30 segundos para jugar la peor.</p></div><div className="rule"><b>02</b><p>El juez de la ronda elige una carta anónima. Quien la jugó suma 2 puntos.</p></div><h3 className="rules-mode"><Vote size={17}/> ¿Quién es más Mala Junta?</h3><div className="rule"><b>03</b><p>Todos leen la consigna y votan por otra persona del grupo. No vale votarse.</p></div><div className="rule"><b>04</b><p>Cada voto recibido suma un punto. Si se acaba el tiempo, el voto se completa al azar.</p></div><button className="btn btn-primary" onClick={()=>setShowRules(false)}>Entendido <Check size={18}/></button></div></div>}
+  </div>;
+}
+
+createRoot(document.getElementById('root')).render(<App/>);
