@@ -39,7 +39,7 @@ El build de Pages ya apunta a esa URL por defecto. Si Render asigna otro dominio
 
 - El anfitrión elige 8, 12 o 16 rondas (al menos tantas como jugadores) y empieza con al menos 3 personas conectadas.
 - Todos tienen 5 cartas de respuesta preparadas, cada una de menos de 200 caracteres.
-- Hay 30 segundos para elegir una; si alguien no llega, se juega una carta al azar.
+- Hay 40 segundos para elegir una; si alguien no llega, se juega una carta al azar.
 - Un juez distinto en cada ronda no juega carta y elige la respuesta ganadora sin ver autores. Tiene 60 segundos para elegir; si se desconecta o vence el tiempo, se elige al azar.
 - La respuesta ganadora suma 2 puntos. La carta jugada se repone después de la ronda.
 - El juez rota por orden de ingreso. Empates finales comparten el primer lugar en puntos.

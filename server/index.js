@@ -13,7 +13,7 @@ const http = createServer(app);
 const clientOrigins=(process.env.CLIENT_ORIGINS || 'https://emafz.github.io,https://juegobzr-emafz.onrender.com,http://localhost:5173,http://127.0.0.1:5173').split(',').map(origin=>origin.trim()).filter(Boolean);
 const io = new Server(http, { cors: { origin: clientOrigins } });
 const rooms = new Map();
-const DURATION = 30000;
+const DURATION = 40000;
 const JUDGE_DURATION = 60000;
 const RESULT_DURATION = 11000;
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
