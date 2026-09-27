@@ -6,10 +6,12 @@ import path from 'node:path';
 import { Server } from 'socket.io';
 import { prompts, answers } from './cards.js';
 import { mostLikelyPrompts } from './most-likely.js';
+import { trialCases } from './trial-cases.js';
 
 const app = express();
 const http = createServer(app);
-const io = new Server(http, { cors: { origin: true } });
+const clientOrigins=(process.env.CLIENT_ORIGINS || 'https://emafz.github.io,https://juegobzr-emafz.onrender.com,http://localhost:5173,http://127.0.0.1:5173').split(',').map(origin=>origin.trim()).filter(Boolean);
+const io = new Server(http, { cors: { origin: clientOrigins } });
 const rooms = new Map();
 const DURATION = 30000;
 const JUDGE_DURATION = 60000;
@@ -26,9 +28,13 @@ const clearTimer = (room) => { if (room.timer) clearTimeout(room.timer); room.ti
 function publicState(room, player) {
   return {
     code: room.code, phase: room.phase, mode:room.mode, hostId: room.hostId, playerId: player.id,
-    players: room.players.map(p => ({ id:p.id, name:p.name, score:p.score, connected:!!p.socketId, submitted:room.mode === 'mostLikely' ? room.votes.has(p.id) : room.plays.has(p.id) })),
+    players: room.players.map(p => ({ id:p.id, name:p.name, score:p.score, accusations:p.accusations, connected:!!p.socketId, submitted:room.mode === 'mostLikely' ? room.votes.has(p.id) : room.mode === 'trial' ? room.verdicts.has(p.id) : room.plays.has(p.id) })),
     hand: room.mode === 'cards' ? player.hand.map(i => ({ id:i, text:answers[i] })) : [],
     judgeId:room.judgeId, prompt:room.prompt, round:room.round, totalRounds:room.totalRounds,
+    accusedId:room.accusedId, targetAccusations:3,
+    defenseOptions:room.mode === 'trial' && room.phase === 'defending' && player.id === room.accusedId ? room.defenseOptions.map(option => ({key:option.key,text:option.text})) : [],
+    defenseCard:room.mode === 'trial' && (room.phase === 'verdict' || room.phase === 'result') ? room.defenseCard : null,
+    verdictResult:room.mode === 'trial' && room.phase === 'result' ? room.verdictResult : null,
     endsAt:room.endsAt, cards: room.phase === 'judging' || room.phase === 'result' ? room.shownCards.map(c => ({key:c.key, text:c.text, ...(room.phase === 'result' ? {playerId:c.playerId}: {})})) : [],
     winnerId:room.phase === 'result' || room.phase === 'ended' ? room.winnerId : null,
     winnerIds:room.phase === 'result' ? room.winnerIds : [],
@@ -53,8 +59,28 @@ function setDeadline(room, ms, fn) {
   room.timer = setTimeout(() => { room.timer=null; fn(room); }, ms);
 }
 function newRound(room) {
-  if (room.round >= room.totalRounds || connected(room).length < 3) {
-    room.phase='ended'; room.endsAt=null; room.endedAt=Date.now(); room.winnerId=null; clearTimer(room); emitRoom(room); return;
+  const reachedRoundLimit=room.mode !== 'trial' && room.round >= room.totalRounds;
+  if (reachedRoundLimit || room.trialWinnerId || connected(room).length < 3) {
+    room.phase='ended'; room.endsAt=null; room.endedAt=Date.now(); room.winnerId=room.mode === 'trial' ? room.trialWinnerId : null; clearTimer(room); emitRoom(room); return;
+  }
+  if (room.mode === 'trial') {
+    let index=room.nextAccusedIndex % room.players.length;
+    while (!room.players[index].socketId) index=(index+1)%room.players.length;
+    room.accusedId=room.players[index].id;
+    room.nextAccusedIndex=(index+1)%room.players.length;
+    room.round++;
+    room.prompt=room.trialCases.pop();
+    if (!room.trialCases.length) room.trialCases=shuffle(trialCases.filter(trialCase => trialCase !== room.prompt));
+    if (room.trialDefenseDeck.length < 4) room.trialDefenseDeck=shuffle(answers.map((_,i)=>i));
+    room.defenseOptions=Array.from({length:4},()=>{
+      const cardIndex=room.trialDefenseDeck.pop();
+      return {key:id(),cardIndex,text:answers[cardIndex]};
+    });
+    room.defenseCard=null; room.verdicts.clear(); room.verdictResult=null; room.winnerId=null; room.winnerIds=[];
+    room.phase='defending';
+    setDeadline(room,DURATION,r=>chooseDefense(r,r.defenseOptions[Math.floor(Math.random()*r.defenseOptions.length)]?.key));
+    emitRoom(room);
+    return;
   }
   if (room.mode === 'mostLikely') {
     room.round++;
@@ -135,6 +161,42 @@ function finishVoting(room) {
   setDeadline(room,RESULT_DURATION,newRound);
   emitRoom(room);
 }
+function chooseDefense(room, key) {
+  if (room.phase !== 'defending') return false;
+  const chosen=room.defenseOptions.find(option => option.key === key);
+  if (!chosen) return false;
+  room.defenseCard=chosen.text;
+  room.defenseOptions=[];
+  room.verdicts.clear();
+  room.phase='verdict';
+  setDeadline(room,DURATION,finishTrialVoting);
+  emitRoom(room);
+  return true;
+}
+function finishTrialVoting(room) {
+  if (room.phase !== 'verdict') return;
+  const voters=connected(room).filter(player => player.id !== room.accusedId);
+  const voterIds=new Set(voters.map(player => player.id));
+  for (const voter of voters) if (!room.verdicts.has(voter.id)) room.verdicts.set(voter.id,Math.random() < .5);
+  let guilty=0;
+  let innocent=0;
+  for (const [voterId,vote] of room.verdicts) {
+    if (!voterIds.has(voterId)) continue;
+    if (vote) guilty++;
+    else innocent++;
+  }
+  const verdict=guilty > innocent ? 'guilty' : 'innocent';
+  const accused=room.players.find(player => player.id === room.accusedId);
+  if (verdict === 'guilty' && accused) accused.accusations++;
+  room.verdictResult={guilty,innocent,verdict};
+  room.winnerId=verdict === 'guilty' ? room.accusedId : null;
+  room.winnerIds=room.winnerId ? [room.winnerId] : [];
+  if (accused?.accusations >= 3) room.trialWinnerId=accused.id;
+  room.history.push({round:room.round,prompt:room.prompt,accusedId:room.accusedId,defense:room.defenseCard,...room.verdictResult});
+  room.phase='result';
+  setDeadline(room,RESULT_DURATION,newRound);
+  emitRoom(room);
+}
 function fail(ack, message) { reply(ack,{ok:false,error:message}); }
 function validName(input) { return typeof input === 'string' && input.trim().length >= 1 && input.trim().length <= 20; }
 function join(socket, room, name, token, ack) {
@@ -145,7 +207,7 @@ function join(socket, room, name, token, ack) {
     if (room.players.length >= 10) return fail(ack,'La sala está llena (máximo 10 jugadores).');
     const clean=name.trim();
     if (room.players.some(p => p.name.toLowerCase() === clean.toLowerCase())) return fail(ack,'Ese nombre ya está en uso.');
-    p={id:id(),token:id(),name:clean,score:0,hand:[],socketId:null};
+    p={id:id(),token:id(),name:clean,score:0,accusations:0,hand:[],socketId:null};
     room.players.push(p);
   }
   if (p.socketId && p.socketId !== socket.id) io.sockets.sockets.get(p.socketId)?.disconnect(true);
@@ -159,7 +221,7 @@ io.on('connection', socket => {
     if (socket.data.room) return fail(ack,'Ya estás en una sala.');
     if (!validName(data.name)) return fail(ack,'Elegí un nombre de hasta 20 caracteres.');
     let key; do { key=code(); } while(rooms.has(key));
-    const room={code:key,players:[],hostId:null,phase:'lobby',mode:'cards',round:0,totalRounds:8,nextJudgeIndex:0,judgeId:null,prompt:null,prompts:shuffle(prompts),votePrompts:shuffle(mostLikelyPrompts),deck:shuffle(answers.map((_,i)=>i)),plays:new Map(),votes:new Map(),shownCards:[],voteResults:[],history:[],winnerId:null,winnerIds:[],winningCard:null,endsAt:null,timer:null};
+    const room={code:key,players:[],hostId:null,phase:'lobby',mode:'cards',round:0,totalRounds:8,nextJudgeIndex:0,nextAccusedIndex:0,judgeId:null,accusedId:null,prompt:null,prompts:shuffle(prompts),votePrompts:shuffle(mostLikelyPrompts),trialCases:shuffle(trialCases),trialDefenseDeck:shuffle(answers.map((_,i)=>i)),defenseOptions:[],defenseCard:null,verdicts:new Map(),verdictResult:null,trialWinnerId:null,deck:shuffle(answers.map((_,i)=>i)),plays:new Map(),votes:new Map(),shownCards:[],voteResults:[],history:[],winnerId:null,winnerIds:[],winningCard:null,endsAt:null,timer:null};
     rooms.set(key,room);
     join(socket,room,data.name,null,ack);
     room.hostId=room.players[0].id;
@@ -183,7 +245,7 @@ io.on('connection', socket => {
   socket.on('mode', (data={}, ack) => {
     const room=rooms.get(socket.data.room); const p=room && findPlayer(room,socket);
     if (!p || p.id !== room.hostId || room.phase !== 'lobby') return fail(ack,'Solo quien creó la sala puede cambiar la modalidad.');
-    if (!['cards','mostLikely'].includes(data.mode)) return fail(ack,'Esa modalidad no existe.');
+    if (!['cards','mostLikely','trial'].includes(data.mode)) return fail(ack,'Esa modalidad no existe.');
     room.mode=data.mode; reply(ack,{ok:true}); emitRoom(room);
   });
   socket.on('play', (data={}, ack) => {
@@ -206,6 +268,18 @@ io.on('connection', socket => {
     if (connected(room).every(player => room.votes.has(player.id))) finishVoting(room);
     else emitRoom(room);
   });
+  socket.on('defend', (data={}, ack) => {
+    const room=rooms.get(socket.data.room), p=room && findPlayer(room,socket);
+    if (!p || p.id !== room.accusedId || !chooseDefense(room,data.key)) return fail(ack,'Solo la persona acusada puede elegir su defensa.');
+    reply(ack,{ok:true});
+  });
+  socket.on('verdict', (data={}, ack) => {
+    const room=rooms.get(socket.data.room), p=room && findPlayer(room,socket);
+    if (!p || room.phase !== 'verdict' || p.id === room.accusedId || room.verdicts.has(p.id) || typeof data.guilty !== 'boolean') return fail(ack,'No se pudo registrar el veredicto.');
+    room.verdicts.set(p.id,data.guilty); reply(ack,{ok:true});
+    if (connected(room).filter(player => player.id !== room.accusedId).every(player => room.verdicts.has(player.id))) finishTrialVoting(room);
+    else emitRoom(room);
+  });
   socket.on('next', (_,ack) => {
     const room=rooms.get(socket.data.room), p=room && findPlayer(room,socket);
     if (!p || p.id !== room.hostId || room.phase !== 'result') return fail(ack,'Esperá el resultado.');
@@ -224,6 +298,8 @@ io.on('connection', socket => {
     if (!room.players.length) { clearTimer(room); rooms.delete(room.code); return; }
     if (room.phase === 'answering' && connected(room).filter(x=>x.id!==room.judgeId).every(x=>room.plays.has(x.id))) finishAnswering(room);
     else if (room.phase === 'voting' && connected(room).every(x=>room.votes.has(x.id))) finishVoting(room);
+    else if (room.phase === 'defending' && p.id === room.accusedId) chooseDefense(room,room.defenseOptions[Math.floor(Math.random()*room.defenseOptions.length)]?.key);
+    else if (room.phase === 'verdict' && connected(room).filter(x=>x.id!==room.accusedId).every(x=>room.verdicts.has(x.id))) finishTrialVoting(room);
     else if (room.phase === 'judging' && p.id === room.judgeId) selectWinner(room,room.shownCards[Math.floor(Math.random()*room.shownCards.length)].key);
     else emitRoom(room);
   });
@@ -232,6 +308,7 @@ setInterval(() => {
   for (const room of rooms.values()) if (!connected(room).length || (room.phase === 'ended' && Date.now()-(room.endedAt ?? Date.now())>3600000)) { clearTimer(room); rooms.delete(room.code); }
 },60000).unref();
 const dirname=path.dirname(fileURLToPath(import.meta.url));
+app.get('/healthz',(_,res)=>res.status(200).json({ok:true}));
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(dirname,'../dist')));
   app.get('*',(req,res)=>res.sendFile(path.join(dirname,'../dist/index.html')));

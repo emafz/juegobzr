@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { prompts, answers } from './cards.js';
 import { mostLikelyPrompts } from './most-likely.js';
+import { trialCases } from './trial-cases.js';
 test('hay consignas y cartas suficientes para una partida de 10 jugadores', () => {
   assert.ok(prompts.length >= 16);
   assert.ok(answers.length >= 50);
@@ -13,4 +14,10 @@ test('la modalidad Mala Junta tiene consignas únicas y respeta los temas exclui
   assert.equal(new Set(mostLikelyPrompts).size,mostLikelyPrompts.length);
   assert.ok(mostLikelyPrompts.every(prompt => prompt.startsWith('¿Quién es más probable')));
   assert.ok(mostLikelyPrompts.every(prompt => !/suicid|aborto|violaci[oó]n/i.test(prompt)));
+});
+test('El Juzgado tiene casos únicos y cuatro o más defensas disponibles', () => {
+  assert.ok(trialCases.length >= 50);
+  assert.equal(new Set(trialCases).size,trialCases.length);
+  assert.ok(answers.length >= 4);
+  assert.ok(trialCases.every(trialCase => !/suicid|aborto|violaci[oó]n/i.test(trialCase)));
 });

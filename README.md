@@ -1,6 +1,6 @@
 # El más bizarro
 
-Juego de cartas multijugador para teléfonos, hecho con React + Vite y un servidor Node.js + Socket.IO. La partida funciona entre 3 y 10 personas en una sala privada con código. No requiere cuentas ni servicios externos.
+Juego multijugador para teléfonos, hecho con React + Vite y Node.js + Socket.IO. La partida funciona entre 3 y 10 personas en una sala privada con código. No requiere cuentas de jugador.
 
 ## Requisitos
 
@@ -29,9 +29,11 @@ Abrí `http://IP_DEL_SERVIDOR:3001` desde los teléfonos. Para jugar desde disti
 
 ## Publicar la interfaz en GitHub Pages
 
-El workflow `.github/workflows/pages.yml` compila y publica la interfaz al hacer push a `main`. En GitHub, configurá **Settings → Pages → Build and deployment → Source → GitHub Actions**.
+El workflow `.github/workflows/pages.yml` compila y publica la interfaz al hacer push a `main`. La URL de Pages es `https://emafz.github.io/juegobzr/`.
 
-GitHub Pages solo sirve archivos estáticos; no ejecuta el servidor Socket.IO. Para que las partidas funcionen, alojá `server/` en un servicio Node.js con HTTPS y WebSockets habilitados. Luego agregá una variable de repositorio llamada `VITE_SERVER_URL` en **Settings → Secrets and variables → Actions → Variables**, con el origen público del servidor (por ejemplo, `https://juego.ejemplo.com`). El workflow la incorpora al build. Sin ese backend, la página se publica pero no podrá conectar jugadores.
+GitHub Pages solo sirve archivos estáticos; el servidor de juego se despliega como servicio Node en Render usando `render.yaml`. Publicá ese blueprint desde [Render](https://render.com/deploy?repo=https://github.com/emafz/juegobzr). El servicio compila `dist`, ejecuta Socket.IO y sirve también la aplicación completa en el mismo origen. Su URL esperada es `https://juegobzr-emafz.onrender.com/`.
+
+El build de Pages ya apunta a esa URL por defecto. Si Render asigna otro dominio, configurá la variable de repositorio `VITE_SERVER_URL` en **Settings → Secrets and variables → Actions → Variables** con el origen real, y actualizá `CLIENT_ORIGINS` en las variables de Render para permitir `https://emafz.github.io`. El servicio incluye `/healthz` para sus verificaciones de salud. El plan gratuito puede dormir tras inactividad y reinicios del servidor terminan las salas en memoria.
 
 ## Reglas
 

@@ -30,7 +30,7 @@ jobs:
       - name: Build site
         run: npm run build
         env:
-          VITE_SERVER_URL: ${{ vars.VITE_SERVER_URL }}
+          VITE_SERVER_URL: ${{ vars.VITE_SERVER_URL || 'https://juegobzr-emafz.onrender.com' }}
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
