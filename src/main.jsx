@@ -76,11 +76,11 @@ function App(){
     socket.disconnect();socket.connect();
   };
   const copy=async()=>{try{await navigator.clipboard.writeText(makeUrl(state.code));setToast('Enlace copiado')}catch{setToast(`Código: ${state.code}`)}};
-  const submitCard=(card)=>{setPendingCard(card.id);request('play',{cardId:card.id},()=>setToast('Carta enviada'))};
-  const submitPick=(card)=>{setPendingPick(card.key);request('pick',{key:card.key},()=>setToast('Respuesta elegida'))};
-  const submitVote=(player)=>{setPendingVote(player.id);request('vote',{playerId:player.id},()=>setToast(`Votaste a ${player.name}`))};
-  const submitDefense=(card)=>{setPendingDefense(card.key);request('defend',{key:card.key},()=>setToast('Defensa presentada'))};
-  const submitVerdict=(guilty)=>{setPendingVerdict(guilty?'guilty':'innocent');request('verdict',{guilty},()=>setToast('Veredicto registrado'))};
+  const submitCard=(card)=>{setPendingCard(card.id);request('play',{cardId:card.id},()=>setToast('Listo, tiraste la bomba'))};
+  const submitPick=(card)=>{setPendingPick(card.key);request('pick',{key:card.key},()=>setToast('Esa barbaridad gana'))};
+  const submitVote=(player)=>{setPendingVote(player.id);request('vote',{playerId:player.id},()=>setToast(`Mandaste al frente a ${player.name}`))};
+  const submitDefense=(card)=>{setPendingDefense(card.key);request('defend',{key:card.key},()=>setToast('Coartada presentada'))};
+  const submitVerdict=(guilty)=>{setPendingVerdict(guilty?'guilty':'innocent');request('verdict',{guilty},()=>setToast('Sentencia clavada'))};
   return <div className="app"><div className="ambient ambient-one"/><div className="ambient ambient-two"/>
     <header className="topbar"><div className="brand" onClick={()=>{if(!state)setView('home')}}><span className="brand-mark">✳</span><span>EL MÁS <b>BIZARRO</b></span></div>{state?<div className="top-pill"><span className="live-dot"/>{state.code}</div>:<div className="top-pill small">+18</div>}</header>
     <main className="main">
