@@ -178,7 +178,27 @@ export const prompts = [
 '¿Por qué hay una cámara, tres velas y un casco junto a tu cama?',
 '¿Qué descubriste dentro del cajón secreto de tu pareja?',
 '¿Cuál fue el peor nombre posible para tu video privado?',
-'¿Qué ocurrió realmente durante la supuesta “noche de juegos”?'
+'¿Qué ocurrió realmente durante la supuesta “noche de juegos”?',
+'Milei interrumpió la cadena nacional para anunciar ___',
+'En el debate presidencial, el candidato pidió un minuto para mostrar ___',
+'Mirtha te miró por encima de los anteojos y preguntó por ___',
+'Wanda subió una historia, la borró y ahora todos hablan de ___',
+'Susana volvió a la televisión exclusivamente para entrevistar a ___',
+'Pergolini abrió el programa con un editorial furioso sobre ___',
+'La nueva canción de Lali está dedicada a ___',
+'La próxima session de Bizarrap va a ser con ___',
+'Scaloni reemplazó la charla técnica por ___',
+'En la despedida de Messi apareció de sorpresa ___',
+'Kicillof llevó un gráfico al programa de streaming para explicar ___',
+'Bullrich frenó un operativo para sacarse una foto con ___',
+'Crónica puso la placa roja: “ÚLTIMO MOMENTO: ___”.',
+'El panelista gritó “tengo las pruebas” y mostró ___',
+'La producción de Gran Hermano tuvo que censurar ___',
+'La AFA lanzó un comunicado para despegarse de ___',
+'El nuevo programa de streaming consiste únicamente en ___',
+'La farándula argentina se unió por una causa: prohibir ___',
+'La Selección salió campeona y el festejo terminó con ___',
+'El próximo invitado de La Noche de Mirtha llevará ___'
 ];
 export const answers = [
 'El grupo secreto donde opinábamos de todos tenía de administrador al jefe.',
@@ -536,5 +556,58 @@ export const answers = [
 'Una cadena nacional para anunciar que nadie puso para el hielo.',
 'El Diego bajando del cielo para pedir que corten con la falopa.',
 'Un escribano, un parrillero y ningún adulto responsable.',
-'La frase “quedate tranqui, boludo” justo antes del desastre.'
+'La frase “quedate tranqui, boludo” justo antes del desastre.',
+'Milei explicando una separación con un gráfico de inflación.',
+'Kicillof inaugurando un pasillo que ya estaba inaugurado.',
+'Bullrich custodiando un tupper como si fuera evidencia federal.',
+'Mirtha preguntando la edad en medio de un allanamiento.',
+'Susana diciendo “¡viva la pepa!” durante una pericia.',
+'Wanda mostrando capturas que nadie le había pedido.',
+'Lali cantando el descargo antes de que llegue la denuncia.',
+'Bizarrap sampleando un audio del grupo de padres.',
+'Scaloni dando la charla técnica para organizar un trío.',
+'Messi pidiendo disculpas por ser el único adulto responsable.',
+'Pergolini peleándose con una tostadora inteligente.',
+'Lukitas Rodríguez relatando el operativo como si fuera un clásico.',
+'Un panelista de televisión con información sacada de un sueño.',
+'La placa roja de Crónica escrita por la suegra.',
+'Un eliminado de Gran Hermano viviendo en el placard.',
+'El community manager de la AFA borrando evidencia.',
+'Un influencer llorando porque el canje incluía dignidad.',
+'La Selección haciendo tiempo para no lavar los platos.',
+'Un candidato besando un bebé que claramente era un caniche.',
+'La mesa de Mirtha usada como escena del crimen.',
+'Un streaming de seis horas para admitir que no pasó nada.',
+'La biopic de Ricardo Fort dirigida por el consorcio.',
+'El Martín Fierro usado para trabar la puerta del baño.',
+'Un economista explicando el levante con riesgo país.',
+'El VAR revisando quién se comió la última empanada.',
+'Una urna electoral llena de vouchers para el telo.',
+'El discurso motivacional de un famoso recién cancelado.',
+'Un móvil en vivo desde la puerta equivocada.',
+'El representante de un futbolista negociando la cuota alimentaria.',
+'La autobiografía no autorizada del perro de una modelo.'
 ];
+
+const UNIVERSAL_ANSWER_START = 316;
+
+export function promptTheme(prompt) {
+  const index = prompts.indexOf(prompt);
+  if (index >= 150 && index < 180) return 'adult';
+  if (index >= 90 && index < 150) return 'crime';
+  if (index >= 50 && index < 90) return 'macabre';
+  return 'social';
+}
+
+export function compatibleAnswerIndices(prompt) {
+  const theme = promptTheme(prompt);
+  return answers.reduce((indices, _, index) => {
+    const universal = index >= UNIVERSAL_ANSWER_START;
+    const social = index < 115;
+    const adult = (index >= 115 && index < 145) || (index >= 216 && index < 241);
+    const macabre = (index >= 145 && index < 175) || (index >= 241 && index < 275);
+    const crime = (index >= 175 && index < 216) || (index >= 275 && index < 316);
+    if (universal || (theme === 'social' && social) || (theme === 'adult' && adult) || (theme === 'macabre' && macabre) || (theme === 'crime' && crime)) indices.push(index);
+    return indices;
+  }, []);
+}

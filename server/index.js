@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { Server } from 'socket.io';
-import { prompts, answers } from './cards.js';
+import { prompts, answers, compatibleAnswerIndices } from './cards.js';
 import { mostLikelyPrompts } from './most-likely.js';
 import { trialCases } from './trial-cases.js';
 
@@ -49,10 +49,12 @@ function emitRoom(room) {
 }
 function draw(room, player) {
   if (player.hand.length >= 5) return;
-  const held = new Set(room.players.flatMap(p => p.hand));
-  const available = answers.map((_,i) => i).filter(i => !held.has(i) && !room.deck.includes(i));
-  if (!room.deck.length) room.deck = shuffle(available);
   while (player.hand.length < 5 && room.deck.length) player.hand.push(room.deck.pop());
+}
+function prepareHands(room) {
+  for (const player of room.players) player.hand=[];
+  room.deck=shuffle(compatibleAnswerIndices(room.prompt));
+  for (const player of connected(room)) draw(room,player);
 }
 function setDeadline(room, ms, fn) {
   clearTimer(room); room.endsAt = Date.now()+ms;
@@ -93,7 +95,6 @@ function newRound(room) {
     emitRoom(room);
     return;
   }
-  const active = connected(room);
   let index = room.nextJudgeIndex % room.players.length;
   while (!room.players[index].socketId) index=(index+1)%room.players.length;
   room.judgeId=room.players[index].id;
@@ -102,8 +103,8 @@ function newRound(room) {
   room.prompt = room.prompts.pop();
   if (!room.prompts.length) room.prompts = shuffle(prompts.filter(q => q !== room.prompt));
   room.plays.clear(); room.shownCards=[]; room.winnerId=null; room.winnerIds=[]; room.winningCard=null; room.voteResults=[];
+  prepareHands(room);
   room.phase='answering';
-  for (const p of active) draw(room,p);
   setDeadline(room,DURATION, finishAnswering);
   emitRoom(room);
 }
@@ -221,7 +222,7 @@ io.on('connection', socket => {
     if (socket.data.room) return fail(ack,'Ya estás en una sala.');
     if (!validName(data.name)) return fail(ack,'Elegí un nombre de hasta 20 caracteres.');
     let key; do { key=code(); } while(rooms.has(key));
-    const room={code:key,players:[],hostId:null,phase:'lobby',mode:'cards',round:0,totalRounds:8,nextJudgeIndex:0,nextAccusedIndex:0,judgeId:null,accusedId:null,prompt:null,prompts:shuffle(prompts),votePrompts:shuffle(mostLikelyPrompts),trialCases:shuffle(trialCases),trialDefenseDeck:shuffle(answers.map((_,i)=>i)),defenseOptions:[],defenseCard:null,verdicts:new Map(),verdictResult:null,trialWinnerId:null,deck:shuffle(answers.map((_,i)=>i)),plays:new Map(),votes:new Map(),shownCards:[],voteResults:[],history:[],winnerId:null,winnerIds:[],winningCard:null,endsAt:null,timer:null};
+    const room={code:key,players:[],hostId:null,phase:'lobby',mode:'cards',round:0,totalRounds:8,nextJudgeIndex:0,nextAccusedIndex:0,judgeId:null,accusedId:null,prompt:null,prompts:shuffle(prompts),votePrompts:shuffle(mostLikelyPrompts),trialCases:shuffle(trialCases),trialDefenseDeck:shuffle(answers.map((_,i)=>i)),defenseOptions:[],defenseCard:null,verdicts:new Map(),verdictResult:null,trialWinnerId:null,deck:[],plays:new Map(),votes:new Map(),shownCards:[],voteResults:[],history:[],winnerId:null,winnerIds:[],winningCard:null,endsAt:null,timer:null};
     rooms.set(key,room);
     join(socket,room,data.name,null,ack);
     room.hostId=room.players[0].id;
@@ -239,7 +240,6 @@ io.on('connection', socket => {
     if (connected(room).length < 3) return fail(ack,'Necesitás al menos 3 jugadores.');
     if (![8,12,16].includes(data.rounds) || (room.mode === 'cards' && data.rounds < connected(room).length)) return fail(ack,room.mode === 'cards' ? 'Elegí suficientes rondas para que todos sean jueces.' : 'Elegí una cantidad válida de rondas.');
     room.totalRounds=data.rounds;
-    if (room.mode === 'cards') for (const player of room.players) draw(room,player);
     reply(ack,{ok:true}); newRound(room);
   });
   socket.on('mode', (data={}, ack) => {
