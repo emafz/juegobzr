@@ -13,7 +13,8 @@ const http = createServer(app);
 const clientOrigins=(process.env.CLIENT_ORIGINS || 'https://emafz.github.io,https://juegobzr-emafz.onrender.com,http://localhost:5173,http://127.0.0.1:5173').split(',').map(origin=>origin.trim()).filter(Boolean);
 const io = new Server(http, { cors: { origin: clientOrigins } });
 const rooms = new Map();
-const DURATION = 40000;
+const OTHER_ROUND_DURATION = 40000;
+const CARDS_ANSWER_DURATION = 60000;
 const JUDGE_DURATION = 60000;
 const RESULT_DURATION = 11000;
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -80,7 +81,7 @@ function newRound(room) {
     });
     room.defenseCard=null; room.verdicts.clear(); room.verdictResult=null; room.winnerId=null; room.winnerIds=[];
     room.phase='defending';
-    setDeadline(room,DURATION,r=>chooseDefense(r,r.defenseOptions[Math.floor(Math.random()*r.defenseOptions.length)]?.key));
+    setDeadline(room,OTHER_ROUND_DURATION,r=>chooseDefense(r,r.defenseOptions[Math.floor(Math.random()*r.defenseOptions.length)]?.key));
     emitRoom(room);
     return;
   }
@@ -91,7 +92,7 @@ function newRound(room) {
     if (!room.votePrompts.length) room.votePrompts=shuffle(mostLikelyPrompts.filter(q => q !== room.prompt));
     room.votes.clear(); room.voteResults=[]; room.winnerId=null; room.winnerIds=[]; room.winningCard=null; room.shownCards=[];
     room.phase='voting';
-    setDeadline(room,DURATION,finishVoting);
+    setDeadline(room,OTHER_ROUND_DURATION,finishVoting);
     emitRoom(room);
     return;
   }
@@ -105,7 +106,7 @@ function newRound(room) {
   room.plays.clear(); room.shownCards=[]; room.winnerId=null; room.winnerIds=[]; room.winningCard=null; room.voteResults=[];
   prepareHands(room);
   room.phase='answering';
-  setDeadline(room,DURATION, finishAnswering);
+  setDeadline(room,CARDS_ANSWER_DURATION, finishAnswering);
   emitRoom(room);
 }
 function finishAnswering(room) {
@@ -170,7 +171,7 @@ function chooseDefense(room, key) {
   room.defenseOptions=[];
   room.verdicts.clear();
   room.phase='verdict';
-  setDeadline(room,DURATION,finishTrialVoting);
+  setDeadline(room,OTHER_ROUND_DURATION,finishTrialVoting);
   emitRoom(room);
   return true;
 }
