@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { prompts, answers, promptTheme, compatibleAnswerIndices } from './cards.js';
 import { mostLikelyPrompts } from './most-likely.js';
 import { trialCases } from './trial-cases.js';
+import { trialDefenses } from './trial-defenses.js';
+import { agreementCategories, agreementPrompts } from './agreement-prompts.js';
 test('hay consignas y cartas suficientes para una partida de 10 jugadores', () => {
   assert.ok(prompts.length >= 16);
   assert.ok(answers.length >= 50);
@@ -27,6 +29,16 @@ test('la modalidad Mala Junta tiene consignas únicas y respeta los temas exclui
 test('El Juzgado tiene casos únicos y cuatro o más defensas disponibles', () => {
   assert.ok(trialCases.length >= 50);
   assert.equal(new Set(trialCases).size,trialCases.length);
-  assert.ok(answers.length >= 4);
+  assert.ok(trialDefenses.length >= 50);
+  assert.equal(new Set(trialDefenses).size,trialDefenses.length);
+  assert.ok(trialDefenses.every(defense => defense.length > 0 && defense.length <= 200));
+  assert.ok(trialDefenses.every(defense => !answers.includes(defense)));
   assert.ok(trialCases.every(trialCase => !/suicid|aborto|violaci[oó]n/i.test(trialCase)));
+});
+test('De Acuerdo tiene cinco categorías con veinte debates únicos cada una', () => {
+  assert.equal(Object.keys(agreementCategories).length,5);
+  assert.ok(Object.values(agreementCategories).every(prompts => prompts.length === 20));
+  assert.equal(agreementPrompts.length,100);
+  assert.equal(new Set(agreementPrompts.map(prompt => prompt.text)).size,100);
+  assert.ok(agreementPrompts.every(prompt => prompt.category && prompt.text.startsWith('¿Estás de acuerdo')));
 });

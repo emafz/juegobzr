@@ -44,13 +44,18 @@ El build de Pages ya apunta a esa URL por defecto. Si Render asigna otro dominio
 - La respuesta ganadora suma 2 puntos. La carta jugada se repone después de la ronda.
 - El juez rota por orden de ingreso. Empates finales comparten el primer lugar en puntos.
 
+En El Juzgado, la persona acusada recibe cuatro defensas de un mazo exclusivo y tiene 90 segundos para elegir una. Después, el resto del grupo vota culpable o inocente.
+
+En DE ACUERDO, todos votan en secreto durante 60 segundos si están de acuerdo o en desacuerdo con una consigna. Al cerrarse la votación se muestran solamente los totales, nunca el voto de cada persona, y se abre un debate de 180 segundos. No hay puntaje: el objetivo es generar bardo y defender cada postura.
+
 Las salas y las puntuaciones están en memoria; reiniciar el servidor termina las partidas. Los jugadores pueden reconectarse desde el mismo navegador mientras siga abierta la sala. Los códigos identifican salas privadas, pero no son una contraseña criptográfica.
 
 ## Archivos
 
 - `src/`: interfaz para móvil.
 - `server/index.js`: lógica de salas, turnos y temporizadores.
-- `server/cards.js`: 50 consignas y 115 respuestas editables.
+- `server/cards.js`: consignas y respuestas editables para Cartas.
+- `server/agreement-prompts.js`: 100 debates de DE ACUERDO, repartidos en 5 categorías.
 
 ## Comprobación
 
